@@ -2,7 +2,7 @@
 cli tool that grabs answers from stackoverflow for a specified question
 ## building
     go build -o qq main.go
-after bulding it you can put into /usr/bin or $PATH or any other place way you want
+after building it you can put it into bin or $PATH or any other place way you want
 
 ## usage
     qq "how to center a div"
