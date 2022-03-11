@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-  "os/exec"
-  "runtime"
+	"os/exec"
+	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
-  "strconv"
-  "regexp"
 
 	"encoding/json"
-	_ "encoding/json"
 	"net/http"
 
 	"github.com/joho/godotenv"
 )
+
+//TODO: move bigger vars from stack to heap
 
 type searchItem struct{
     Tags []string               `json:"tags"`
@@ -44,6 +45,19 @@ func getUserInput(question *string){
     }
 
     *question = strings.ReplaceAll(args[0], " ", "%20")
+}
+
+func removeHTMLTags(str *string){
+        // all text in <code> paint orange
+        *str = strings.ReplaceAll(*str, "<code>", "\033[0;33m")
+        *str = strings.ReplaceAll(*str, "</code>", "\033[0m")
+
+        // remote html tags
+        htmlRegex := regexp.MustCompile(`<(“[^”]*”|'[^’]*’|[^'”>])*>`)
+        *str = string(htmlRegex.ReplaceAllString(*str, ""))
+
+        // TODO: turn multiple empty lines into one
+        // TODO: html entities to actual chars
 }
 
 func getSearchRes(question string)([]searchItem){
@@ -90,6 +104,11 @@ func getSearchRes(question string)([]searchItem){
         os.Exit(0)
     }
 
+    // clean up html tags
+    for index := 0; index < len(resJSON.Items); index++{
+        removeHTMLTags(&resJSON.Items[index].Body)
+    }
+
     return resJSON.Items
 }
 
@@ -134,9 +153,14 @@ func displayRes(res []searchItem) (int){
     var err error
     fmt.Print("\n\n\n")
     for {
+        fmt.Println("Enter e to exit qq")
         fmt.Printf("Enter the number of the answer you want to see (1-%d): ", noOfAnswers)
         var userInput string
         fmt.Scanln(&userInput)
+        if strings.ToUpper(userInput) == "E"{
+            os.Exit(0)
+        }
+
         num, err = strconv.Atoi(userInput)
         if err != nil {
             fmt.Println("You need to enter a number!\n")
@@ -200,20 +224,37 @@ func getDetailedThread(questionId int64)(threadInfo){
 
     // remove html elements
     // TODO: print text inside <code> different color
-    for index, answer := range resJSON.Items{
-        htmlRegex := regexp.MustCompile(`<(“[^”]*”|'[^’]*’|[^'”>])*>`)
-        resJSON.Items[index].Body = string(htmlRegex.ReplaceAllString(answer.Body, ""))
+    for index := 0; index < len(resJSON.Items);index++{
+        removeHTMLTags(&resJSON.Items[index].Body)
     }
 
     return resJSON
 }
 
+func printBody(thread *searchItem){
+    clearScreen()
+    fmt.Printf("Title: %s\n", thread.Title)
+    fmt.Printf("Link: %s\n", thread.Link)
+    fmt.Print("-------------------------------------------------------\n")
+    fmt.Print(thread.Body)
+    fmt.Print("-------------------------------------------------------\n")
+    fmt.Print("Press enter to conitnue> ")
+    var temp string
+    fmt.Scanln(&temp)
+}
+
 func displayDetailedThread(thread searchItem, answers threadInfo){
+    printBody(&thread)
     fmt.Printf("Title: %-100s\n", thread.Title)
     fmt.Printf("URL to the thread: %s\n", thread.Link)
-    var userInput string
+    var userInput []byte = make([]byte, 1)
     var index int
     var length int = len(answers.Items)
+
+    // disable input buffering and do not display entered char on clearScreen
+    // TODO: this most likely doesnt work on windows
+    exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+    exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 
     for{
         clearScreen()
@@ -223,13 +264,37 @@ func displayDetailedThread(thread searchItem, answers threadInfo){
         fmt.Print(answers.Items[index].Body)
         fmt.Print("-------------------------------------------------------\n")
 
-        fmt.Scanln(&userInput)
-        if index +1 < length{
-            index++
-        }else{
-            index = 0
-        }
+        for{
+            // TODO: c - comments
+            // commands
+            // n - next answer
+            // p - previous answer
+            // e - exit qq
+            // b - new answer
+            // d - question body
+            // h - help
+            fmt.Print("\r> ")
+            os.Stdin.Read(userInput)
 
+            // if enter is pressed
+            if strings.ToUpper(string(userInput[0])) == "N" && (index + 1 < length){
+                index++
+                break
+            }else if strings.ToUpper(string(userInput[0])) == "P" && (index>0){
+                index--
+                break
+            }else if strings.ToUpper(string(userInput[0])) == "E"{
+                exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                os.Exit(0)
+            }else if strings.ToUpper(string(userInput[0])) == "B"{
+                exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                return
+            }else if strings.ToUpper(string(userInput[0])) == "D"{
+                printBody(&thread)
+            }else if strings.ToUpper(string(userInput[0])) == "H"{
+                fmt.Println("\nn - next answer\np - previous answer\ne - exit qq\nb - new answer\nd - question body\nq - new question")
+            }
+        }
     }
 }
 
@@ -262,13 +327,15 @@ func main(){
     var threads []searchItem
     threads = getSearchRes(question)
 
-    // display and get desired answer
-    var num int
-    num = displayRes(threads)
+    for{
+        // display and get desired answer
+        var num int
+        num = displayRes(threads)
 
-    // get detailed thread
-    answers := getDetailedThread(threads[num].Question_id)
+        // get detailed thread
+        answers := getDetailedThread(threads[num].Question_id)
 
-    // display detialed thread
-    displayDetailedThread(threads[num], answers)
+        // display detailed thread
+        displayDetailedThread(threads[num], answers)
+    }
 }
