@@ -8,6 +8,7 @@ import (
   "runtime"
 	"strings"
   "strconv"
+  "regexp"
 
 	"encoding/json"
 	_ "encoding/json"
@@ -16,30 +17,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type ownerStruct struct{
-    Account_id int          `json:"account_id"`
-    Reputation int          `json:"reputation"`
-    User_id int64           `json:"user_id"`
-    User_type string        `json:"user_type"`
-    Profile_image string    `json:"profile_image"`
-    Display_name string     `json:"display_name"`
-    Link string             `json:"link"`
-}
-
 type searchItem struct{
     Tags []string               `json:"tags"`
-    Owner ownerStruct           `json:"owner"`
-    Is_answered bool            `json:"is_answered"`
-    View_count int64            `json:"view_count"`
-    Closed_date int64           `json:"closed_date"`
-    Answer_count int            `json:"answer_count"`
-    Score int                   `json:"score"`
     Last_activity_date int64    `json:"last_activity_date"`
-    Creation_date int64         `json:"creation_date"`
     Question_id int64           `json:"question_id"`
     Link string                 `json:"link"`
-    Closed_reason string        `json:"closed_reason"`
     Title string                `json:"title"`
+    Body string                 `json:"body"`
 }
 
 type searchRes struct{
@@ -65,7 +49,7 @@ func getUserInput(question *string){
 func getSearchRes(question string)([]searchItem){
     client := http.Client{}
 
-    var url string = base_url + fmt.Sprintf("search?key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow", key, question)
+    var url string = base_url + fmt.Sprintf("search?key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!LaSRLv)IiArQZm_BTFPx*I", key, question)
 
     // make a new request
     req, err := http.NewRequest("get", url, nil)
@@ -173,32 +157,18 @@ func displayRes(res []searchItem) (int){
 
 type threadInfo struct {
     Items []struct{
-        Owner struct{
-            Account_id int64        `json:"account_id"`
-            Reputation int          `json:"reputation"`
-            User_id int64           `json:"user_id"`
-            User_type string        `json:"user_type"`
-            Accept_rate int         `json:"accept-rate"`
-            Profile_image string    `json:"profile_image"`
-            Display_name string     `json:"display_name"`
-            Link string             `json:"link"`
-        }                           `json:"owner"`
-        Is_accepted bool            `json:"is_accepted"`
-        Score int                   `json:"score"`
-        Last_activity_date int64    `json:"last_activity_date"`
-        Last_edit_date int64        `json:"last_edit_date"`
-        Creation_date int64         `json:"creation_date"`
-        Answer_id int64             `json:"answer_id"`
-        Question_id int             `json:"question_id"`
-        Content_license string      `json:"content_license"`
+        Link string                 `json:"link"`
+        Body string                 `json:"body"`
     }                               `json:"items"`
 }
 
-func getDetailedThread(questionId int64){
-    fmt.Print(questionId)
+func getDetailedThread(questionId int64)(threadInfo){
     client := http.Client{}
 
-    var url string = base_url + fmt.Sprintf("questions/%d/answers?order=desc&sort=votes&site=stackoverflow", questionId)
+    // filter
+    // everything default except:
+    // answer - body, link
+    var url string = base_url + fmt.Sprintf("questions/%d/answers?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!4(lY7-qjlgWB7Z01e", questionId, key)
 
     req, err := http.NewRequest("get", url, nil)
     if err != nil {
@@ -228,15 +198,39 @@ func getDetailedThread(questionId int64){
         os.Exit(0)
     }
 
-    // iterate over answers and get actual text of the answer
+    // remove html elements
+    // TODO: print text inside <code> different color
+    for index, answer := range resJSON.Items{
+        htmlRegex := regexp.MustCompile(`<(“[^”]*”|'[^’]*’|[^'”>])*>`)
+        resJSON.Items[index].Body = string(htmlRegex.ReplaceAllString(answer.Body, ""))
+    }
 
+    return resJSON
 }
 
-func displayDetailedThread(answer searchItem){
-    clearScreen()
-    fmt.Printf("Title: %-100s\n", answer.Title)
-    fmt.Printf("URL to the thread: %s\n", answer.Link)
-    fmt.Print("-------------------------------------------------------\n")
+func displayDetailedThread(thread searchItem, answers threadInfo){
+    fmt.Printf("Title: %-100s\n", thread.Title)
+    fmt.Printf("URL to the thread: %s\n", thread.Link)
+    var userInput string
+    var index int
+    var length int = len(answers.Items)
+
+    for{
+        clearScreen()
+        fmt.Printf("Answer %d.\n", index+1)
+        fmt.Printf("Link: %s\n", answers.Items[index].Link)
+        fmt.Print("-------------------------------------------------------\n")
+        fmt.Print(answers.Items[index].Body)
+        fmt.Print("-------------------------------------------------------\n")
+
+        fmt.Scanln(&userInput)
+        if index +1 < length{
+            index++
+        }else{
+            index = 0
+        }
+
+    }
 }
 
 func init(){
@@ -265,16 +259,16 @@ func main(){
     getUserInput(&question)
 
     // query question
-    var answers []searchItem
-    answers = getSearchRes(question)
+    var threads []searchItem
+    threads = getSearchRes(question)
 
     // display and get desired answer
     var num int
-    num = displayRes(answers)
+    num = displayRes(threads)
 
     // get detailed thread
-    getDetailedThread(answers[num].Question_id)
+    answers := getDetailedThread(threads[num].Question_id)
 
     // display detialed thread
-    //displayDetailedThread(answers[num])
+    displayDetailedThread(threads[num], answers)
 }
