@@ -12,8 +12,6 @@ import (
 
 	"encoding/json"
 	"net/http"
-
-	"github.com/joho/godotenv"
 )
 
 //TODO: move bigger vars from stack to heap
@@ -31,8 +29,8 @@ type searchRes struct{
     Items []searchItem    `json:"Items"`
 }
 
-var base_url string
-var key string
+var base_url string = "https://api.stackexchange.com/2.3/"
+var key string = "iSj2NwARiXutCdbZY9vkKQ(("
 var clear map[string]func()
 
 func getUserInput(question *string){
@@ -299,11 +297,6 @@ func displayDetailedThread(thread searchItem, answers threadInfo){
 }
 
 func init(){
-    // load env
-    _ = godotenv.Load(".env")
-    base_url = os.Getenv("BASE_URL")
-    key = os.Getenv("KEY")
-
     clear = make(map[string]func())
     clear["linux"] = func () {
         cmd := exec.Command("clear")
