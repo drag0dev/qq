@@ -14,7 +14,7 @@ import (
 	"net/http"
 )
 
-//TODO: move bigger vars from stack to heap
+// TODO: catch force exit and renable echo in terminal
 
 type searchItem struct{
     Tags []string               `json:"tags"`
@@ -144,6 +144,7 @@ func displayRes(res []searchItem) (int){
         }
 
         fmt.Printf("%d.\t%-50s\t%s\n", index+1, title, tags)
+        noOfAnswers++
     }
 
     // take user input
@@ -179,18 +180,26 @@ func displayRes(res []searchItem) (int){
 
 type threadInfo struct {
     Items []struct{
+        Answer_id int64             `json:"answer_id"`
         Link string                 `json:"link"`
         Body string                 `json:"body"`
     }                               `json:"items"`
 }
 
-func getDetailedThread(questionId int64)(threadInfo){
+type answerComments struct{
+    Items []struct{
+        Link string                 `json:"link"`
+        Body string                 `json:"body"`
+    }                               `json:"items"`
+}
+
+func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
     client := http.Client{}
 
     // filter
     // everything default except:
     // answer - body, link
-    var url string = base_url + fmt.Sprintf("questions/%d/answers?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!4(lY7-qjlgWB7Z01e", questionId, key)
+    var url string = base_url + fmt.Sprintf("questions/%d/answers?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!4(lY7-qjnWz1N.wT9", questionId, key)
 
     req, err := http.NewRequest("get", url, nil)
     if err != nil {
@@ -204,6 +213,7 @@ func getDetailedThread(questionId int64)(threadInfo){
         os.Exit(0)
     }else if res.Status != "200 OK"{
         fmt.Printf("Error getting the whole thread (%s), exiting!\n", res.Status)
+        os.Exit(0)
     }
 
     body, err := ioutil.ReadAll(res.Body)
@@ -221,12 +231,51 @@ func getDetailedThread(questionId int64)(threadInfo){
     }
 
     // remove html elements
-    // TODO: print text inside <code> different color
     for index := 0; index < len(resJSON.Items);index++{
         removeHTMLTags(&resJSON.Items[index].Body)
     }
 
-    return resJSON
+    // get answer comments
+    comments := make(map[int64]*answerComments)
+    for _, answer := range resJSON.Items{
+        url = base_url + fmt.Sprintf(`answers/%d/comments?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!bB.Oz07fFTfvm)`, answer.Answer_id, key)
+        req, err := http.NewRequest("get", url, nil)
+        if err != nil{
+            fmt.Print("Error making a request to get comments, exiting!\n")
+            os.Exit(0)
+        }
+
+        res, err := client.Do(req)
+        if err != nil{
+            fmt.Println("Error making a request to get comments, exiting!\n")
+            os.Exit(0)
+        }else if res.Status != "200 OK"{
+            fmt.Printf("Error getting answer comments (%s), exiting!\n", res.Status)
+            os.Exit(0)
+        }
+
+        body, err := ioutil.ReadAll(res.Body)
+        if err != nil{
+            fmt.Println("Error parsing body of the response, exiting!")
+            os.Exit(0)
+        }
+        res.Body.Close()
+
+        commentsJSON:= &answerComments{}
+        err = json.Unmarshal([]byte(body), commentsJSON)
+        if err != nil{
+            fmt.Println("Error parsing body of the response, exiting!")
+            os.Exit(0)
+        }
+
+        for _, comment := range commentsJSON.Items{
+            // remove html from the comments
+            removeHTMLTags(&comment.Body)
+        }
+        comments[answer.Answer_id] = commentsJSON
+    }
+
+    return resJSON, comments
 }
 
 func printBody(thread *searchItem){
@@ -236,12 +285,37 @@ func printBody(thread *searchItem){
     fmt.Print("-------------------------------------------------------\n")
     fmt.Print(thread.Body)
     fmt.Print("-------------------------------------------------------\n")
-    fmt.Print("Press enter to conitnue> ")
-    var temp string
-    fmt.Scanln(&temp)
+    var userInput []byte = make([]byte, 1)
+    for{
+        fmt.Print("\rPress anything to continue>")
+        os.Stdin.Read(userInput)
+        if userInput[0]!=0{
+            break
+        }
+    }
 }
 
-func displayDetailedThread(thread searchItem, answers threadInfo){
+func printComments(comments *answerComments){
+    clearScreen()
+    fmt.Println("Comments")
+    for _, c := range comments.Items{
+        fmt.Print("-------------------------------------------------------\n")
+        fmt.Printf("Link: \033[0;34m %s \033[0m \n", c.Link)
+        fmt.Print("-------------------------------------------------------\n")
+        fmt.Printf("Body: %s\n", c.Body)
+        fmt.Print("-------------------------------------------------------\n\n")
+    }
+    var userInput []byte = make([]byte, 1)
+    for{
+        fmt.Print("\rPress anything to continue>")
+        os.Stdin.Read(userInput)
+        if userInput[0]!=0{
+            break
+        }
+    }
+}
+
+func displayDetailedThread(thread searchItem, answers threadInfo, comments map[int64]*answerComments){
     printBody(&thread)
     fmt.Printf("Title: %-100s\n", thread.Title)
     fmt.Printf("URL to the thread: %s\n", thread.Link)
@@ -263,13 +337,13 @@ func displayDetailedThread(thread searchItem, answers threadInfo){
         fmt.Print("-------------------------------------------------------\n")
 
         for{
-            // TODO: c - comments
             // commands
             // n - next answer
             // p - previous answer
             // e - exit qq
             // b - new answer
             // d - question body
+            // c - toggle between comments and answer
             // h - help
             fmt.Print("\r> ")
             os.Stdin.Read(userInput)
@@ -278,8 +352,7 @@ func displayDetailedThread(thread searchItem, answers threadInfo){
             if strings.ToUpper(string(userInput[0])) == "N" && (index + 1 < length){
                 index++
                 break
-            }else if strings.ToUpper(string(userInput[0])) == "P" && (index>0){
-                index--
+            }else if strings.ToUpper(string(userInput[0])) == "P" && (index>0){ index--
                 break
             }else if strings.ToUpper(string(userInput[0])) == "E"{
                 exec.Command("stty", "-F", "/dev/tty", "echo").Run()
@@ -289,12 +362,15 @@ func displayDetailedThread(thread searchItem, answers threadInfo){
                 return
             }else if strings.ToUpper(string(userInput[0])) == "D"{
                 printBody(&thread)
+                break
+            }else if strings.ToUpper(string(userInput[0])) == "C"{
+                printComments(comments[answers.Items[index].Answer_id])
+                break
             }else if strings.ToUpper(string(userInput[0])) == "H"{
-                fmt.Println("\nn - next answer\np - previous answer\ne - exit qq\nb - new answer\nd - question body\nq - new question")
+                fmt.Println("\nn - next answer\np - previous answer\ne - exit qq\nb - new answer\nd - question body\nc - toggle between answer and answer comments\nq - new question")
             }
         }
-    }
-}
+    } }
 
 func init(){
     clear = make(map[string]func())
@@ -326,9 +402,9 @@ func main(){
         num = displayRes(threads)
 
         // get detailed thread
-        answers := getDetailedThread(threads[num].Question_id)
+        answers, comments := getDetailedThread(threads[num].Question_id)
 
         // display detailed thread
-        displayDetailedThread(threads[num], answers)
+        displayDetailedThread(threads[num], answers, comments)
     }
 }
