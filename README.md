@@ -14,7 +14,7 @@ call would looks like this, if only one word is to be queried quotes are not req
 **e** - exit qq <br/>
 **b** - new answer <br/>
 **d** - question body <br/>
-**c** - toggle between comments and answer
+**c** - toggle between comments and answer <br />
 **h** - help <br/>
 
 ## windows
