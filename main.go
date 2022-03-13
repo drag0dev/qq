@@ -5,16 +5,16 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"encoding/json"
 	"net/http"
 )
-
-// TODO: catch force exit and renable echo in terminal
 
 type searchItem struct{
     Tags []string               `json:"tags"`
@@ -58,7 +58,13 @@ func removeHTMLTags(str *string){
         htmlRegex := regexp.MustCompile(`<(“[^”]*”|'[^’]*’|[^'”>])*>`)
         *str = string(htmlRegex.ReplaceAllString(*str, ""))
 
-        // TODO: turn multiple empty lines into one
+        // remove multiple empty lines
+        htmlRegex = regexp.MustCompile(`[\r\n]+`)
+        *str = string(htmlRegex.ReplaceAllString(*str, "\n"))
+
+        // remove newline at the beginning
+        *str= strings.TrimPrefix(*str, "\n")
+
         // TODO: html entities to actual chars
 }
 
@@ -403,6 +409,14 @@ func init(){
         cmd.Stdout = os.Stdout
         cmd.Run()
     }
+
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <- c
+        exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+        os.Exit(0)
+    }()
 }
 
 func main(){
