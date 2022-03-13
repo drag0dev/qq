@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -71,7 +70,7 @@ func removeHTMLTags(str *string){
 func getSearchRes(question string)([]searchItem){
     client := http.Client{}
 
-    var url string = base_url + fmt.Sprintf("search?key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
+    var url string = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
 
     // make a new request
     req, err := http.NewRequest("get", url, nil)
@@ -138,59 +137,65 @@ func clearScreen(){
 
 func displayRes(res []searchItem) (int){
     // display resutls
-    clearScreen()
-    fmt.Printf("%-3s\t%-50s\t %s\n", "no", "title", "tags")
-    var noOfAnswers int = 0
-    for index, answers := range res{
-        if index == 20{
-            noOfAnswers = index
-            break
-        }
-        var title string= answers.Title
-        if len(title) > 50{
-            title = title[0:49]
-        }
-        var tags string = ""
-        for i, tag := range answers.Tags{
-            if i == 3 {
-                break
+    var userSelected int = 0
+    var maxIndex int = len(res) - 1
+    var userInput []byte = make([]byte, 1)
+
+    // buffering and disable display
+    exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+    exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
+
+    for{
+        clearScreen()
+        fmt.Printf("%-3s\t%-50s\t %s\n", "no", "title", "tags")
+        for index, answers := range res{
+            // if the current one is selected print it blue
+            if index == userSelected{
+                fmt.Print("\033[1;104m")
+                fmt.Print("\033[1;91m")
             }
-            tags = tags + " " + tag
-        }
 
-        fmt.Printf("%d.\t%-50s\t%s\n", index+1, title, tags)
-        noOfAnswers++
-    }
+            var title string= answers.Title
+            if len(title) > 50{
+                title = title[0:49]
+            }
+            var tags string = ""
+            for i, tag := range answers.Tags{
+                if i == 3 {
+                    break
+                }
+                tags = tags + " " + tag
+            }
 
-    // take user input
-    var num int
-    var err error
-    fmt.Print("\n\n\n")
-    for {
-        fmt.Println("Enter e to exit qq")
-        fmt.Printf("Enter the number of the answer you want to see (1-%d): ", noOfAnswers)
-        var userInput string
-        fmt.Scanln(&userInput)
-        if strings.ToUpper(userInput) == "E"{
-            os.Exit(0)
-        }
+            fmt.Printf("%d.\t%-50s\t%s\n", index+1, title, tags)
 
-        num, err = strconv.Atoi(userInput)
-        if err != nil {
-            fmt.Println("You need to enter a number!\n")
-            continue
-        }else{
-            if num < 1 || num > noOfAnswers{
-                fmt.Printf("You need to enter a number in range (1-%d)!\n\n", noOfAnswers)
-            }else{
-                // no to index
-                num--
-                break
+            // closing escape char for coloring
+            if index == userSelected{
+                fmt.Print("\033[0m")
             }
         }
-    }
 
-    return num
+        fmt.Println()
+        for{
+            fmt.Print("\rUse j (go down) or k (go up) to select answer which you want and press enter, or type e to exit qq>")
+            os.Stdin.Read(userInput)
+            if strings.ToUpper(string(userInput[0])) == "J" && userSelected < maxIndex{
+                userSelected++
+                break
+            }else if strings.ToUpper(string(userInput[0])) == "K" && userSelected > 0{
+                userSelected--
+                break
+            }else if userInput[0]== 10 || userInput[0] == 13{
+                exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                clearScreen()
+                fmt.Print("Grabbing answers...\n")
+                return userSelected
+            }else if strings.ToUpper(string(userInput[0])) == "E"{
+                exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                os.Exit(0)
+            }
+        }
+    }
 }
 type threadInfo struct {
     Items []struct{
