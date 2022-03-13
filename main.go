@@ -18,6 +18,10 @@ import (
 
 type searchItem struct{
     Tags []string               `json:"tags"`
+    Comments []struct{
+        Link string            `json:"link"`
+        Body string             `json:"body"`
+    }                           `json:"comments"`
     Last_activity_date int64    `json:"last_activity_date"`
     Question_id int64           `json:"question_id"`
     Link string                 `json:"link"`
@@ -61,7 +65,7 @@ func removeHTMLTags(str *string){
 func getSearchRes(question string)([]searchItem){
     client := http.Client{}
 
-    var url string = base_url + fmt.Sprintf("search?key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!LaSRLv)IiArQZm_BTFPx*I", key, question)
+    var url string = base_url + fmt.Sprintf("search?key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
 
     // make a new request
     req, err := http.NewRequest("get", url, nil)
@@ -103,8 +107,13 @@ func getSearchRes(question string)([]searchItem){
     }
 
     // clean up html tags
-    for index := 0; index < len(resJSON.Items); index++{
-        removeHTMLTags(&resJSON.Items[index].Body)
+    for i := 0; i < len(resJSON.Items); i++{
+        removeHTMLTags(&resJSON.Items[i].Body)
+
+        // clean up html in comment bodies
+        for j := 0; j < len(resJSON.Items[i].Comments); j++{
+            removeHTMLTags(&resJSON.Items[i].Comments[j].Body)
+        }
     }
 
     return resJSON.Items
@@ -177,7 +186,6 @@ func displayRes(res []searchItem) (int){
 
     return num
 }
-
 type threadInfo struct {
     Items []struct{
         Answer_id int64             `json:"answer_id"`
@@ -285,6 +293,16 @@ func printBody(thread *searchItem){
     fmt.Print("-------------------------------------------------------\n")
     fmt.Print(thread.Body)
     fmt.Print("-------------------------------------------------------\n")
+
+    fmt.Println("\nComments:")
+    for _, c := range thread.Comments{
+        fmt.Print("-------------------------------------------------------\n")
+        fmt.Printf("Link: \033[0;34m %s \033[0m \n", c.Link)
+        fmt.Print("-------------------------------------------------------\n")
+        fmt.Printf("Body: %s\n", c.Body)
+        fmt.Print("-------------------------------------------------------\n\n")
+    }
+
     var userInput []byte = make([]byte, 1)
     for{
         fmt.Print("\rPress anything to continue>")
