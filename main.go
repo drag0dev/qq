@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+    "html"
 
 	"encoding/json"
 	"net/http"
@@ -64,7 +65,8 @@ func removeHTMLTags(str *string){
         // remove newline at the beginning
         *str= strings.TrimPrefix(*str, "\n")
 
-        // TODO: html entities to actual chars
+        // esacping html entities
+        *str = html.UnescapeString(*str)
 }
 
 func getSearchRes(question string)([]searchItem){
