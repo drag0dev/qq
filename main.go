@@ -69,9 +69,10 @@ func removeHTMLTags(str *string){
         *str = html.UnescapeString(*str)
 }
 
-func getSearchRes(question string)([]searchItem){
+func getSearchRes(question string)([]searchItem, []searchItem){
     client := http.Client{}
 
+    // search by title
     var url string = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
 
     // make a new request
@@ -106,24 +107,69 @@ func getSearchRes(question string)([]searchItem){
     res.Body.Close()
 
     // unmarshaling json
-    var resJSON searchRes
-    err = json.Unmarshal([]byte(body), &resJSON)
+    var resTitleJSON searchRes
+    err = json.Unmarshal([]byte(body), &resTitleJSON)
     if err != nil{
         fmt.Printf("Error parsing json: %s\n", err)
         os.Exit(0)
     }
 
     // clean up html tags
-    for i := 0; i < len(resJSON.Items); i++{
-        removeHTMLTags(&resJSON.Items[i].Body)
+    for i := 0; i < len(resTitleJSON.Items); i++{
+        removeHTMLTags(&resTitleJSON.Items[i].Body)
 
         // clean up html in comment bodies
-        for j := 0; j < len(resJSON.Items[i].Comments); j++{
-            removeHTMLTags(&resJSON.Items[i].Comments[j].Body)
+        for j := 0; j < len(resTitleJSON.Items[i].Comments); j++{
+            removeHTMLTags(&resTitleJSON.Items[i].Comments[j].Body)
         }
     }
 
-    return resJSON.Items
+    // searching in body
+    url = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
+
+    // make a new request
+    req, err = http.NewRequest("get", url, nil)
+    if err != nil{
+        fmt.Println("Error making a request to get body search results, exiting!")
+        os.Exit(0)
+    }
+
+    req.Header.Set("Host", "api.stackexchange.com")
+
+    res, err = client.Do(req)
+    if err != nil {
+        fmt.Println("Error getting search by body results, exiting!")
+        os.Exit(0)
+    }else if res.Status != "200 OK"{
+        fmt.Printf("Error getting search by body results, exiting! (%s)\n", res.Status)
+        os.Exit(0)
+    }
+
+    body, err = ioutil.ReadAll(res.Body)
+    if err != nil {
+        fmt.Print("Error parsing response body, exiting!")
+        os.Exit(0)
+    }
+    res.Body.Close()
+
+    var resBodyJSON searchRes
+    err = json.Unmarshal([]byte(body), &resBodyJSON)
+    if err != nil {
+        fmt.Printf("Error parsing json: %s\n", err)
+        os.Exit(0)
+    }
+
+    // remove html from the body and the comments
+    for i := 0; i < len(resBodyJSON.Items); i++{
+        removeHTMLTags(&resBodyJSON.Items[i].Body)
+
+        for j := 0; j < len(resBodyJSON.Items[i].Comments); j++{
+            removeHTMLTags(&resBodyJSON.Items[i].Comments[j].Body)
+        }
+    }
+
+
+    return resTitleJSON.Items, resBodyJSON.Items
 }
 
 func clearScreen(){
@@ -137,10 +183,10 @@ func clearScreen(){
 
 }
 
-func displayRes(res []searchItem) (int){
+func displayRes(titleRes []searchItem, bodyRes []searchItem) (int){
     // display resutls
     var userSelected int = 0
-    var maxIndex int = len(res) - 1
+    var maxIndex int = len(titleRes) + len(bodyRes) - 1
     var userInput []byte = make([]byte, 1)
 
     // buffering and disable display
@@ -149,8 +195,11 @@ func displayRes(res []searchItem) (int){
 
     for{
         clearScreen()
+
+        // print title res
+        fmt.Println("Results by title")
         fmt.Printf("%-3s\t%-50s\t %s\n", "no", "title", "tags")
-        for index, answers := range res{
+        for index, answers := range titleRes{
             // if the current one is selected print it blue
             if index == userSelected{
                 fmt.Print("\033[1;104m")
@@ -173,6 +222,36 @@ func displayRes(res []searchItem) (int){
 
             // closing escape char for coloring
             if index == userSelected{
+                fmt.Print("\033[0m")
+            }
+        }
+
+        // print body res
+        fmt.Println("\nResults by body")
+        fmt.Printf("%-3s\t%-50s\t %s\n", "no", "title", "tags")
+        for index, answers := range bodyRes{
+            // if the current one is selected print it blue
+            if index+len(titleRes) == userSelected{
+                fmt.Print("\033[1;104m")
+                fmt.Print("\033[1;91m")
+            }
+
+            var title string= answers.Title
+            if len(title) > 50{
+                title = title[0:49]
+            }
+            var tags string = ""
+            for i, tag := range answers.Tags{
+                if i == 3 {
+                    break
+                }
+                tags = tags + " " + tag
+            }
+
+            fmt.Printf("%d.\t%-50s\t%s\n", len(titleRes) + index+1, title, tags)
+
+            // closing escape char for coloring
+            if index+len(titleRes) == userSelected{
                 fmt.Print("\033[0m")
             }
         }
@@ -360,12 +439,17 @@ func displayDetailedThread(thread searchItem, answers threadInfo, comments map[i
     exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 
     for{
-        clearScreen()
-        fmt.Printf("Answer %d.\n", index+1)
-        fmt.Printf("Link: %s\n", answers.Items[index].Link)
-        fmt.Print("-------------------------------------------------------\n")
-        fmt.Print(answers.Items[index].Body)
-        fmt.Print("-------------------------------------------------------\n")
+        if len(answers.Items) > 0{
+            clearScreen()
+            fmt.Printf("Answer %d.\n", index+1)
+            fmt.Printf("Link: %s\n", answers.Items[index].Link)
+            fmt.Print("-------------------------------------------------------\n")
+            fmt.Print(answers.Items[index].Body)
+            fmt.Print("-------------------------------------------------------\n")
+        }else{
+            clearScreen()
+            fmt.Println("There is no answers for this question!")
+        }
 
         for{
             // commands
@@ -383,7 +467,8 @@ func displayDetailedThread(thread searchItem, answers threadInfo, comments map[i
             if strings.ToUpper(string(userInput[0])) == "N" && (index + 1 < length){
                 index++
                 break
-            }else if strings.ToUpper(string(userInput[0])) == "P" && (index>0){ index--
+            }else if strings.ToUpper(string(userInput[0])) == "P" && (index>0){
+                index--
                 break
             }else if strings.ToUpper(string(userInput[0])) == "E"{
                 exec.Command("stty", "-F", "/dev/tty", "echo").Run()
@@ -432,18 +517,32 @@ func main(){
     getUserInput(&question)
 
     // query question
-    var threads []searchItem
-    threads = getSearchRes(question)
+    var titleRes, bodyRes []searchItem
+    titleRes, bodyRes = getSearchRes(question)
+
+    if len(titleRes) ==0 && len(bodyRes) ==0{
+        clearScreen()
+        fmt.Println("No answers could be found, exiting!")
+        os.Exit(0)
+    }
 
     for{
         // display and get desired answer
         var num int
-        num = displayRes(threads)
+        num = displayRes(titleRes, bodyRes)
 
-        // get detailed thread
-        answers, comments := getDetailedThread(threads[num].Question_id)
+        numTitleResults := len(titleRes)
 
-        // display detailed thread
-        displayDetailedThread(threads[num], answers, comments)
+        var answers threadInfo
+        var comments map[int64]*answerComments
+
+        if num >= numTitleResults{
+            num = num - numTitleResults
+            answers, comments = getDetailedThread(bodyRes[num].Question_id)
+            displayDetailedThread(bodyRes[num], answers, comments)
+        }else {
+            answers, comments = getDetailedThread(titleRes[num].Question_id)
+            displayDetailedThread(titleRes[num], answers, comments)
+        }
     }
 }
