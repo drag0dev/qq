@@ -49,7 +49,8 @@ func getUserInput(question *string){
 }
 
 func removeHTMLTags(str *string){
-        // all text in <code> paint orange *str = strings.ReplaceAll(*str, "<code>", "\033[0;33m")
+        // all text in <code> paint orange
+        *str = strings.ReplaceAll(*str, "<code>", "\033[0;33m")
         *str = strings.ReplaceAll(*str, "</code>", "\033[0m")
 
         // remote html tags
@@ -376,7 +377,7 @@ func getDetailedThread(questionId int64)(questionAnswers, map[int64]*answerComme
 func printBody(thread *question){
     clearScreen()
     fmt.Printf("Title: %s\n", thread.Title)
-    fmt.Printf("Link: %s\n", thread.Link)
+    fmt.Printf("Link: \033[0;34m %s \033[0m \n", thread.Link)
     fmt.Print("-------------------------------------------------------\n")
     fmt.Print(thread.Body)
     fmt.Print("-------------------------------------------------------\n")
