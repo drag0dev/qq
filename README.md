@@ -5,8 +5,7 @@ cli tool that grabs answers from stackoverflow for a specified question
 after building it you can put it into bin or $PATH or any other place way you want
 
 ## usage
-    qq "how to center a div"
-call would looks like this, if only one word is to be queried quotes are not required
+<img src='https://s7.gifyu.com/images/qq43abdb7067f01290.gif'></img>
 
 ## commands
 **n** - next answer <br/>
@@ -18,4 +17,4 @@ call would looks like this, if only one word is to be queried quotes are not req
 **h** - help <br/>
 
 ## windows
-it may not work
+as far as I could find there is no way to disable input buffering and display of characters being entered on windows, therefore it does not work on windows
