@@ -16,7 +16,7 @@ import (
 	"net/http"
 )
 
-type searchItem struct{
+type question struct{
     Tags []string               `json:"tags"`
     Comments []struct{
         Link string            `json:"link"`
@@ -30,7 +30,7 @@ type searchItem struct{
 }
 
 type searchRes struct{
-    Items []searchItem    `json:"Items"`
+    Items []question    `json:"Items"`
 }
 
 var base_url string = "https://api.stackexchange.com/2.3/"
@@ -40,7 +40,6 @@ var clear map[string]func()
 func getUserInput(question *string){
     var args []string = os.Args[1:]
 
-    // for now only one arg and that is the question
     if len(args) != 1 {
         fmt.Println("Invalid arguments, exiting!")
         os.Exit(0)
@@ -50,8 +49,7 @@ func getUserInput(question *string){
 }
 
 func removeHTMLTags(str *string){
-        // all text in <code> paint orange
-        *str = strings.ReplaceAll(*str, "<code>", "\033[0;33m")
+        // all text in <code> paint orange *str = strings.ReplaceAll(*str, "<code>", "\033[0;33m")
         *str = strings.ReplaceAll(*str, "</code>", "\033[0m")
 
         // remote html tags
@@ -69,7 +67,7 @@ func removeHTMLTags(str *string){
         *str = html.UnescapeString(*str)
 }
 
-func getSearchRes(question string)([]searchItem, []searchItem){
+func getSearchRes(question string)([]question, []question){
     client := http.Client{}
 
     // search by title
@@ -183,7 +181,7 @@ func clearScreen(){
 
 }
 
-func displayRes(titleRes []searchItem, bodyRes []searchItem) (int){
+func pickQuestion(titleRes []question, bodyRes []question) (int){
     // display resutls
     var userSelected int = 0
     var maxIndex int = len(titleRes) + len(bodyRes) - 1
@@ -278,7 +276,7 @@ func displayRes(titleRes []searchItem, bodyRes []searchItem) (int){
         }
     }
 }
-type threadInfo struct {
+type questionAnswers struct {
     Items []struct{
         Answer_id int64             `json:"answer_id"`
         Link string                 `json:"link"`
@@ -286,19 +284,16 @@ type threadInfo struct {
     }                               `json:"items"`
 }
 
-type answerComments struct{
+type answerComment struct{
     Items []struct{
         Link string                 `json:"link"`
         Body string                 `json:"body"`
     }                               `json:"items"`
 }
 
-func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
+func getDetailedThread(questionId int64)(questionAnswers, map[int64]*answerComment){
     client := http.Client{}
 
-    // filter
-    // everything default except:
-    // answer - body, link
     var url string = base_url + fmt.Sprintf("questions/%d/answers?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!4(lY7-qjnWz1N.wT9", questionId, key)
 
     req, err := http.NewRequest("get", url, nil)
@@ -323,7 +318,7 @@ func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
     }
     res.Body.Close()
 
-    var resJSON threadInfo
+    var resJSON questionAnswers
     err = json.Unmarshal([]byte(body), &resJSON)
     if err != nil{
         fmt.Println("Error parsing body of the response, exiting!")
@@ -336,7 +331,7 @@ func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
     }
 
     // get answer comments
-    comments := make(map[int64]*answerComments)
+    comments := make(map[int64]*answerComment)
     for _, answer := range resJSON.Items{
         url = base_url + fmt.Sprintf(`answers/%d/comments?key=%s&order=desc&sort=votes&site=stackoverflow&filter=!bB.Oz07fFTfvm)`, answer.Answer_id, key)
         req, err := http.NewRequest("get", url, nil)
@@ -361,7 +356,7 @@ func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
         }
         res.Body.Close()
 
-        commentsJSON:= &answerComments{}
+        commentsJSON:= &answerComment{}
         err = json.Unmarshal([]byte(body), commentsJSON)
         if err != nil{
             fmt.Println("Error parsing body of the response, exiting!")
@@ -378,7 +373,7 @@ func getDetailedThread(questionId int64)(threadInfo, map[int64]*answerComments){
     return resJSON, comments
 }
 
-func printBody(thread *searchItem){
+func printBody(thread *question){
     clearScreen()
     fmt.Printf("Title: %s\n", thread.Title)
     fmt.Printf("Link: %s\n", thread.Link)
@@ -405,7 +400,7 @@ func printBody(thread *searchItem){
     }
 }
 
-func printComments(comments *answerComments){
+func printComments(comments *answerComment){
     clearScreen()
     fmt.Println("Comments")
     for _, c := range comments.Items{
@@ -425,7 +420,7 @@ func printComments(comments *answerComments){
     }
 }
 
-func displayDetailedThread(thread searchItem, answers threadInfo, comments map[int64]*answerComments){
+func displayDetailedThread(thread question, answers questionAnswers, comments map[int64]*answerComment){
     printBody(&thread)
     fmt.Printf("Title: %-100s\n", thread.Title)
     fmt.Printf("URL to the thread: %s\n", thread.Link)
@@ -434,7 +429,7 @@ func displayDetailedThread(thread searchItem, answers threadInfo, comments map[i
     var length int = len(answers.Items)
 
     // disable input buffering and do not display entered char on clearScreen
-    // TODO: this most likely doesnt work on windows
+    // there don't seem to be an easy way of doing the same for windows
     exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
     exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 
@@ -513,12 +508,12 @@ func init(){
 
 func main(){
     // get question
-    var question string;
-    getUserInput(&question)
+    var questionStr string;
+    getUserInput(&questionStr)
 
     // query question
-    var titleRes, bodyRes []searchItem
-    titleRes, bodyRes = getSearchRes(question)
+    var titleRes, bodyRes []question
+    titleRes, bodyRes = getSearchRes(questionStr)
 
     if len(titleRes) ==0 && len(bodyRes) ==0{
         clearScreen()
@@ -529,12 +524,12 @@ func main(){
     for{
         // display and get desired answer
         var num int
-        num = displayRes(titleRes, bodyRes)
+        num = pickQuestion(titleRes, bodyRes)
 
         numTitleResults := len(titleRes)
 
-        var answers threadInfo
-        var comments map[int64]*answerComments
+        var answers questionAnswers
+        var comments map[int64]*answerComment
 
         if num >= numTitleResults{
             num = num - numTitleResults
