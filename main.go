@@ -37,14 +37,15 @@ var base_url string = "https://api.stackexchange.com/2.3/"
 var key string = "iSj2NwARiXutCdbZY9vkKQ(("
 var clear map[string]func()
 
-func getUserInput(question *string){
+func getUserInput(question *string, tags *string){
     var args []string = os.Args[1:]
 
-    if len(args) != 1 {
+    if len(args) != 2 {
         fmt.Println("Invalid arguments, exiting!")
         os.Exit(0)
     }
 
+    *tags = args[1]
     *question = strings.ReplaceAll(args[0], " ", "%20")
 }
 
@@ -68,11 +69,11 @@ func removeHTMLTags(str *string){
         *str = html.UnescapeString(*str)
 }
 
-func getSearchRes(question string)([]question, []question){
+func getSearchRes(question string, tag string)([]question, []question){
     client := http.Client{}
 
     // search by title
-    var url string = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
+    var url string = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&tagged=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question, tag)
 
     // make a new request
     req, err := http.NewRequest("get", url, nil)
@@ -124,7 +125,7 @@ func getSearchRes(question string)([]question, []question){
     }
 
     // searching in body
-    url = base_url + fmt.Sprintf("search?pagesize=20&key=%s&order=desc&sort=votes&intitle=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question)
+    url = base_url + fmt.Sprintf("search/advanced/?pagesize=20&key=%s&order=desc&sort=votes&body=%s&tagged=%s&site=stackoverflow&filter=!tgYu)MVYQMRhXxIidh_Dm5kktzNkyDS", key, question, tag)
 
     // make a new request
     req, err = http.NewRequest("get", url, nil)
@@ -272,6 +273,7 @@ func pickQuestion(titleRes []question, bodyRes []question) (int){
                 return userSelected
             }else if strings.ToUpper(string(userInput[0])) == "E"{
                 exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                fmt.Println()
                 os.Exit(0)
             }
         }
@@ -438,7 +440,7 @@ func displayDetailedThread(thread question, answers questionAnswers, comments ma
         if len(answers.Items) > 0{
             clearScreen()
             fmt.Printf("Answer %d.\n", index+1)
-            fmt.Printf("Link: %s\n", answers.Items[index].Link)
+            fmt.Printf("Link: \033[0;34m %s \033[0m \n", answers.Items[index].Link)
             fmt.Print("-------------------------------------------------------\n")
             fmt.Print(answers.Items[index].Body)
             fmt.Print("-------------------------------------------------------\n")
@@ -468,6 +470,7 @@ func displayDetailedThread(thread question, answers questionAnswers, comments ma
                 break
             }else if strings.ToUpper(string(userInput[0])) == "E"{
                 exec.Command("stty", "-F", "/dev/tty", "echo").Run()
+                fmt.Println()
                 os.Exit(0)
             }else if strings.ToUpper(string(userInput[0])) == "B"{
                 exec.Command("stty", "-F", "/dev/tty", "echo").Run()
@@ -510,14 +513,14 @@ func init(){
 func main(){
     // get question
     var questionStr string;
-    getUserInput(&questionStr)
+    var tag string;
+    getUserInput(&questionStr, &tag)
 
     // query question
     var titleRes, bodyRes []question
-    titleRes, bodyRes = getSearchRes(questionStr)
+    titleRes, bodyRes = getSearchRes(questionStr, tag)
 
     if len(titleRes) ==0 && len(bodyRes) ==0{
-        clearScreen()
         fmt.Println("No answers could be found, exiting!")
         os.Exit(0)
     }
